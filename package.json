@@ -12,5 +12,6 @@
     "express": "^4.22.2",
     "fs": "0.0.1-security",
     "path": "^0.12.7"
+       "mongoose": "^9.9.3"
   }
 }
