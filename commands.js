@@ -166,6 +166,38 @@ function handleMessages(client) {
                 `Prefix successfully updated to \`${newPrefix}\``
             );
         }
+             // ----------------------------------------------------
+        // HELP COMMAND
+        // ----------------------------------------------------
+        if (command === 'help') {
+            const helpEmbed = new EmbedBuilder()
+                .setColor(0x00FFFF)
+                .setTitle('🤖 Bot Commands List')
+                .setDescription(`Current prefix is \`${prefix}\``)
+                .addFields(
+                    { name: '⚙️ Settings', value: `\`\${prefix}prefix <new>\` - Change bot prefix` },
+                    { name: '🛡️ Moderation', value: 
+                        `\`\${prefix}kick <user>\` - Kick a user\n` +
+                        `\`\${prefix}ban <user>\` - Ban a user\n` +
+                        `\`\${prefix}unban <userID>\` - Unban a user\n` +
+                        `\`\${prefix}mute <user> <time>\` - Mute user (e.g. 2d, 1w)\n` +
+                        `\`\${prefix}unmute <user>\` - Unmute user` 
+                    },
+                    { name: '🔒 Channels', value: 
+                        `\`\${prefix}lock\` / \`\${prefix}unlock\` - Lock or unlock text channel\n` +
+                        `\`\${prefix}hide\` / \`\${prefix}unhide\` - Hide or show channel\n` +
+                        `\`\${prefix}cg <action> <id>\` - Lock/Unlock/Hide/Unhide full category` 
+                    },
+                    { name: '🏷️ Roles', value: 
+                        `\`\${prefix}role add <role> <user>\` - Give or remove a role from a user\n` +
+                        `\`\${prefix}mrole <role> <user1> <user2>...\` - Give role to multiple users (max 30)\n` +
+                        `\`\${prefix}giverole <roleID> @role\` - **Tournament Version:** Reply to a squad message to give everyone the role`
+                    }
+                );
+
+            return message.reply({ embeds: [helpEmbed] });
+        }
+
 
         // ----------------------------------------------------
         // BAN COMMAND
