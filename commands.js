@@ -909,202 +909,216 @@ if (command === 'mrole') {
 // $giverole <roleID> @role
 // Must be used while replying to a tournament squad message
 // ----------------------------------------------------
-if (command === 'giverole') {
-    if (
-        !message.member.permissions.has(
-            PermissionFlagsBits.ManageRoles
-        )
-    ) {
-        return;
-    }
-
-    const roleId = args[0];
-    const roleMention = args[1];
-
-    // Check role ID
-    if (!roleId) {
-        return message.reply(
-            `Usage: ${prefix}giverole <roleID> @role`
-        );
-    }
-
-    // Get role from ID first
-    const targetRole =
-        message.guild.roles.cache.get(roleId);
-
-    if (!targetRole) {
-        return message.reply(
-            'Could not find the specified role ID.'
-        );
-    }
-
-    // Make sure command is replying to a message
-    if (!message.reference?.messageId) {
-        return message.reply(
-            `Please use ${prefix}giverole as a reply to the tournament squad message.`
-        );
-    }
-
-    // Fetch the replied message
-    let repliedMessage;
-
-    try {
-        repliedMessage = await message.channel.messages.fetch(
-            message.reference.messageId
-        );
-    } catch (err) {
-        return message.reply(
-            'Could not fetch the tournament squad message.'
-        );
-    }
-
-    if (!repliedMessage) {
-        return message.reply(
-            'Could not find the tournament squad message.'
-        );
-    }
-
-    // ------------------------------------------------
-    // PARSE TOURNAMENT SQUAD
-    // Example:
-    // .shrek69 (766324039282196500)
-    // 8rayx (617041714982856704)
-    // ------------------------------------------------
-
-    const lines = repliedMessage.content
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line.length > 0);
-
-    if (lines.length === 0) {
-        return message.reply(
-            'The replied message does not contain any users.'
-        );
-    }
-
-    const users = [];
-
-    for (const line of lines) {
-        // Extract username + ID
-        const match = line.match(
-            /^(.+?)\s*\((\d{17,20})\)\s*$/
-        );
-
-        if (!match) {
-            continue;
-        }
-
-        const username = match[1].trim();
-        const userId = match[2].trim();
-
-        users.push({
-            username,
-            userId
-        });
-    }
-
-    if (users.length === 0) {
-        return message.reply(
-            'Could not detect any tournament-style users in the replied message.'
-        );
-    }
-
-    // ------------------------------------------------
-    // GIVE ROLE
-    // ------------------------------------------------
-
-    let successCount = 0;
-    const notInServer = [];
-
-    for (const squadUser of users) {
-        let member = null;
-
-        // --------------------------------------------
-        // FIRST TRY USERNAME
-        // --------------------------------------------
-        try {
-            const foundMembers =
-                await message.guild.members.fetch({
-                    query: squadUser.username,
-                    limit: 1
-                });
-
+        // ----------------------------------------------------
+        // GIVE ROLE FROM TOURNAMENT SQUAD MESSAGE
+        // \$giverole <roleID>
+        // Must be used while replying to a tournament squad message
+        // ----------------------------------------------------
+        if (command === 'giverole') {
             if (
-                foundMembers &&
-                foundMembers.size > 0
+                !message.member.permissions.has(
+                    PermissionFlagsBits.ManageRoles
+                )
             ) {
-                member = foundMembers.first();
+                return;
+            }
 
-                // Make sure the username actually matches
-                // instead of accidentally selecting a partial match
-                const exactMatch =
-                    foundMembers.find(
-                        m =>
-                            m.user.username.toLowerCase() ===
-                            squadUser.username.toLowerCase()
-                    );
+            const roleId = args[0];
 
-                if (exactMatch) {
-                    member = exactMatch;
+            // Check role ID
+            if (!roleId) {
+                return message.reply(
+                    `Usage: ${prefix}giverole <roleID>`
+                );
+            }
+
+            // Get role from ID first
+            const targetRole =
+                message.guild.roles.cache.get(roleId);
+
+            if (!targetRole) {
+                return message.reply(
+                    'Could not find the specified role ID.'
+                );
+            }
+
+            // Make sure command is replying to a message
+            if (!message.reference?.messageId) {
+                return message.reply(
+                    `Please use ${prefix}giverole as a reply to the tournament squad message.`
+                );
+            }
+
+            // Fetch the replied message
+            let repliedMessage;
+
+            try {
+                repliedMessage = await message.channel.messages.fetch(
+                    message.reference.messageId
+                );
+            } catch (err) {
+                return message.reply(
+                    'Could not fetch the tournament squad message.'
+                );
+            }
+
+            if (!repliedMessage) {
+                return message.reply(
+                    'Could not find the tournament squad message.'
+                );
+            }
+
+            // ------------------------------------------------
+            // AGGRESSIVE TOURNAMENT SQUAD PARSER
+            // Handles: 
+            // - "username (123456789012345678)"
+            // - "1. username" or "username" (No ID attached)
+            // - Ignores chat noise / section headers
+            // ------------------------------------------------
+            const lines = repliedMessage.content
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 0);
+
+            if (lines.length === 0) {
+                return message.reply(
+                    'The replied message does not contain any text content.'
+                );
+            }
+
+            const users = [];
+
+            for (const line of lines) {
+                // Ignore Markdown headings or conversational text lines that don't match list items
+                if (line.startsWith('#') || line.startsWith('//') || line.startsWith('!')) {
+                    continue;
+                }
+
+                // Clean up prefix numbers/symbols (e.g., "1. shreyx." -> "shreyx.")
+                let cleanLine = line.replace(/^\d+[\s\.\)-]+/, '').trim();
+                if (!cleanLine) continue;
+
+                // Pattern A: Match "Username (ID)"
+                const matchWithId = cleanLine.match(/^(.+?)\s*\((\d{17,20})\)\s*\$/);
+
+                if (matchWithId) {
+                    users.push({
+                        username: matchWithId[1].trim(),
+                        userId: matchWithId[2].trim()
+                    });
+                } else {
+                    // Pattern B: No ID found. Assume the remaining string is a raw Username
+                    // Exclude general chatter by checking if the line is unreasonably long
+                    if (cleanLine.length < 35) { 
+                        users.push({
+                            username: cleanLine,
+                            userId: null
+                        });
+                    }
                 }
             }
-        } catch (err) {}
 
-        // --------------------------------------------
-        // IF USERNAME FAILED, TRY ID
-        // --------------------------------------------
-        if (!member) {
-            try {
-                member =
-                    await message.guild.members
-                        .fetch(squadUser.userId)
-                        .catch(() => null);
-            } catch (err) {
-                member = null;
-            }
-        }
-
-        // --------------------------------------------
-        // BOTH FAILED
-        // --------------------------------------------
-        if (!member) {
-            notInServer.push(squadUser.username);
-            continue;
-        }
-
-        // --------------------------------------------
-        // GIVE ROLE
-        // --------------------------------------------
-        try {
-            if (!member.roles.cache.has(targetRole.id)) {
-                await member.roles.add(targetRole.id);
+            if (users.length === 0) {
+                return message.reply(
+                    'Could not extract any valid usernames or user IDs from the replied message.'
+                );
             }
 
-            successCount++;
-        } catch (err) {
-            console.error(
-                `Failed to give ${targetRole.name} to ${member.user.tag}:`,
-                err
-            );
+            // ------------------------------------------------
+            // TRACKING CATEGORIES
+            // ------------------------------------------------
+            const givenTo = [];
+            const alreadyHad = [];
+            const notInServer = [];
+
+            for (const squadUser of users) {
+                let member = null;
+
+                // METHOD 1: EXTRACT VIA ID IF AVAILABLE
+                if (squadUser.userId) {
+                    try {
+                        member = await message.guild.members
+                            .fetch(squadUser.userId)
+                            .catch(() => null);
+                    } catch (err) {
+                        member = null;
+                    }
+                }
+
+                // METHOD 2: LOOKUP VIA USERNAME STRING FALLBACK
+                if (!member && squadUser.username) {
+                    try {
+                        const foundMembers = await message.guild.members.fetch({
+                            query: squadUser.username,
+                            limit: 5
+                        });
+
+                        if (foundMembers && foundMembers.size > 0) {
+                            // Enforce strict exact match prioritizing
+                            const exactMatch = foundMembers.find(
+                                m => m.user.username.toLowerCase() === squadUser.username.toLowerCase()
+                            );
+
+                            member = exactMatch || foundMembers.first();
+                        }
+                    } catch (err) {}
+                }
+
+                // ALL LOOKUPS FAILED
+                if (!member) {
+                    const trackingLabel = squadUser.userId 
+                        ? `\`\${squadUser.username}\` (${squadUser.userId})`
+                        : `\`\${squadUser.username}\` *(No ID)*`;
+                    notInServer.push(trackingLabel);
+                    continue;
+                }
+
+                // CHECK AND APPLY ROLE
+                try {
+                    if (member.roles.cache.has(targetRole.id)) {
+                        alreadyHad.push(member.user.toString());
+                    } else {
+                        await member.roles.add(targetRole.id);
+                        givenTo.push(member.user.toString());
+                    }
+                } catch (err) {
+                    console.error(`Failed to assign role to ${member.user.tag}:`, err);
+                    notInServer.push(`${member.user.toString()} *(Hierarchy Error)*`);
+                }
+            }
+
+            // ------------------------------------------------
+            // RENDER EMBED RESULT
+            // ------------------------------------------------
+            const resultEmbed = new EmbedBuilder()
+                .setColor(0x2ECC71)
+                .setTitle(`🏆 Tournament Squad Role Update`)
+                .setDescription(`Processed role updates for **${targetRole.name}**`)
+                .setTimestamp();
+
+            resultEmbed.addFields({
+                name: `✅ Members Given To (${givenTo.length})`,
+                value: givenTo.length > 0 ? givenTo.join(', ') : '*None*',
+                inline: false
+            });
+
+            resultEmbed.addFields({
+                name: `👥 Already Had Role (${alreadyHad.length})`,
+                value: alreadyHad.length > 0 ? alreadyHad.join(', ') : '*None*',
+                inline: false
+            });
+
+            resultEmbed.addFields({
+                name: `❌ Not Found / Not In Server (${notInServer.length})`,
+                value: notInServer.length > 0 ? notInServer.join('\n') : '*None*',
+                inline: false
+            });
+
+            return message.reply({
+                embeds: [resultEmbed]
+            });
         }
-    }
 
-    // ------------------------------------------------
-    // RESULT MESSAGE
-    // ------------------------------------------------
-
-    let resultMessage =
-        `Gave **${targetRole.name}** to **${successCount}** Users.`;
-
-    if (notInServer.length > 0) {
-        resultMessage +=
-            `\nNot in Server: ${notInServer.join(', ')}`;
-    }
-
-    return message.reply(resultMessage);
-}
-    });
-}
 
 module.exports = {
     handleMessages
