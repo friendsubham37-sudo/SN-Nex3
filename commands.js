@@ -910,6 +910,11 @@ if (command === 'mrole') {
         // \$giverole <roleID>
         // Must be used while replying to a tournament squad message
         // ----------------------------------------------------
+        // ----------------------------------------------------
+        // GIVE ROLE FROM TOURNAMENT SQUAD MESSAGE
+        // \$giverole <roleID>
+        // Must be used while replying to a tournament squad message
+        // ----------------------------------------------------
         if (command === 'giverole') {
             if (
                 !message.member.permissions.has(
@@ -965,12 +970,8 @@ if (command === 'mrole') {
             }
 
             // ------------------------------------------------
-            // PARSE TOURNAMENT SQUAD
-            // Example:
-            // .shrek69 (766324039282196500)
-            // 8rayx (617041714982856704)
+            // FIXED TOURNAMENT SQUAD PARSER
             // ------------------------------------------------
-
             const lines = repliedMessage.content
                 .split('\n')
                 .map(line => line.trim())
@@ -978,34 +979,51 @@ if (command === 'mrole') {
 
             if (lines.length === 0) {
                 return message.reply(
-                    'The replied message does not contain any users.'
+                    'The replied message does not contain any text content.'
                 );
             }
 
             const users = [];
 
             for (const line of lines) {
-                // Extract username + ID
-                const match = line.match(
-                    /^(.+?)\s*\((\d{17,20})\)\s*\$/
-                );
-
-                if (!match) {
+                // Ignore Markdown headings, comments, or commands
+                if (line.startsWith('#') || line.startsWith('//') || line.startsWith('!') || line.startsWith(prefix)) {
                     continue;
                 }
 
-                const username = match[1].trim();
-                const userId = match[2].trim();
+                // Clean up leading numbers followed by dots/spaces (e.g., "1. shreyx" -> "shreyx")
+                // Standalone dots at the front of a username remain completely untouched!
+                let cleanLine = line.replace(/^\d+[\s\.\)-]+/, '').trim();
+                
+                // Clean list dashes or bullet characters if present
+                if (cleanLine.startsWith('-') || cleanLine.startsWith('•')) {
+                    cleanLine = cleanLine.substring(1).trim();
+                }
 
-                users.push({
-                    username,
-                    userId
-                });
+                if (!cleanLine) continue;
+
+                // Match "Username (ID)" anywhere on the line safely
+                const matchWithId = cleanLine.match(/^(.+?)\s*\((\d{17,20})\)/);
+
+                if (matchWithId) {
+                    users.push({
+                        username: matchWithId[1].trim(),
+                        userId: matchWithId[2].trim()
+                    });
+                } else {
+                    // Fallback: No ID attached, take raw Username string if it's reasonably short
+                    if (cleanLine.length < 35) { 
+                        users.push({
+                            username: cleanLine,
+                            userId: null
+                        });
+                    }
+                }
             }
 
             if (users.length === 0) {
                 return message.reply(
-                    'Could not detect any tournament-style users in the replied message.'
+                    'Could not extract any valid usernames or user IDs from the replied message.'
                 );
             }
 
@@ -1019,61 +1037,55 @@ if (command === 'mrole') {
             for (const squadUser of users) {
                 let member = null;
 
-                // FIRST TRY USERNAME
-                try {
-                    const foundMembers =
-                        await message.guild.members.fetch({
-                            query: squadUser.username,
-                            limit: 1
-                        });
-
-                    if (
-                        foundMembers &&
-                        foundMembers.size > 0
-                    ) {
-                        const exactMatch =
-                            foundMembers.find(
-                                m =>
-                                    m.user.username.toLowerCase() ===
-                                    squadUser.username.toLowerCase()
-                            );
-
-                        member = exactMatch || foundMembers.first();
-                    }
-                } catch (err) {}
-
-                // IF USERNAME FAILED, TRY ID
-                if (!member) {
+                // STRATEGY 1: FETCH BY ID
+                if (squadUser.userId) {
                     try {
-                        member =
-                            await message.guild.members
-                                .fetch(squadUser.userId)
-                                .catch(() => null);
+                        member = await message.guild.members
+                            .fetch(squadUser.userId)
+                            .catch(() => null);
                     } catch (err) {
                         member = null;
                     }
                 }
 
-                // BOTH FAILED: NOT IN SERVER
+                // STRATEGY 2: FALLBACK TO USERNAME LOOKUP
+                if (!member && squadUser.username) {
+                    try {
+                        const foundMembers = await message.guild.members.fetch({
+                            query: squadUser.username,
+                            limit: 5
+                        });
+
+                        if (foundMembers && foundMembers.size > 0) {
+                            const exactMatch = foundMembers.find(
+                                m => m.user.username.toLowerCase() === squadUser.username.toLowerCase()
+                            );
+
+                            member = exactMatch || foundMembers.first();
+                        }
+                    } catch (err) {}
+                }
+
+                // BOTH LOOKUPS FAILED: LOG TARGET NAME PROPERLY
                 if (!member) {
-                    notInServer.push(`\`\${squadUser.username}\` (${squadUser.userId})`);
+                    const trackingLabel = squadUser.userId 
+                        ? `\`\${squadUser.username}\` (${squadUser.userId})`
+                        : `\`\${squadUser.username}\` *(No ID)*`;
+                    notInServer.push(trackingLabel);
                     continue;
                 }
 
-                // CHECK AND APPLY ROLE
+                // CHECK STATUS AND EXECUTE
                 try {
                     if (member.roles.cache.has(targetRole.id)) {
-                        alreadyHad.push(`${member.user.toString()}`);
+                        alreadyHad.push(member.user.toString());
                     } else {
                         await member.roles.add(targetRole.id);
-                        givenTo.push(`${member.user.toString()}`);
+                        givenTo.push(member.user.toString());
                     }
                 } catch (err) {
-                    console.error(
-                        `Failed to process role for ${member.user.tag}:`,
-                        err
-                    );
-                    notInServer.push(`\`\${squadUser.username}\` (Hierarchy Error)`);
+                    console.error(`Failed to assign role to ${member.user.tag}:`, err);
+                    notInServer.push(`${member.user.toString()} *(Hierarchy/Admin Error)*`);
                 }
             }
 
@@ -1081,28 +1093,25 @@ if (command === 'mrole') {
             // RENDER EMBED RESULT
             // ------------------------------------------------
             const resultEmbed = new EmbedBuilder()
-                .setColor(0x3498DB)
+                .setColor(0x2ECC71)
                 .setTitle(`🏆 Tournament Squad Role Update`)
                 .setDescription(`Processed role updates for **${targetRole.name}**`)
                 .setTimestamp();
 
-            // 1. Members given to
             resultEmbed.addFields({
                 name: `✅ Members Given To (${givenTo.length})`,
                 value: givenTo.length > 0 ? givenTo.join(', ') : '*None*',
                 inline: false
             });
 
-            // 2. Members who already had it
             resultEmbed.addFields({
                 name: `👥 Already Had Role (${alreadyHad.length})`,
                 value: alreadyHad.length > 0 ? alreadyHad.join(', ') : '*None*',
                 inline: false
             });
 
-            // 3. Members not found / not in server
             resultEmbed.addFields({
-                name: `❌ Not In Server (${notInServer.length})`,
+                name: `❌ Not Found / Not In Server (${notInServer.length})`,
                 value: notInServer.length > 0 ? notInServer.join('\n') : '*None*',
                 inline: false
             });
