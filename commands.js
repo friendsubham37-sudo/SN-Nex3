@@ -190,7 +190,7 @@ function handleMessages(client) {
                         '➔ `cg [action] [categoryID]` ─ Lock/Unlock/Hide/Unhide a whole category' 
                     },
                     { name: '🏷️ Roles', value: 
-                        '➔ `role add [@role/roleID] [@user/ID/name]` ─ Give or remove a role\n' +
+                        '➔ `role [@role/roleID] [@user/ID/name]` ─ Give or remove a role\n' +
                         '➔ `mrole [@role/roleID] [@user1] [@user2]...` ─ Mass role users (max 30)\n' +
                         '➔ `giverole [roleID] [@role]` ─ **Tournament Version:** Reply to squad message'
                     }
@@ -718,12 +718,9 @@ function handleMessages(client) {
 
         // ----------------------------------------------------
         // ROLE SINGLE / TOGGLE
-        // $role add <role> <user>
+        // \$role <role> <user> (Removed the "add" keyword requirement)
         // ----------------------------------------------------
-        if (
-            command === 'role' &&
-            args[0]?.toLowerCase() === 'add'
-        ) {
+        if (command === 'role') {
             if (
                 !message.member.permissions.has(
                     PermissionFlagsBits.ManageRoles
@@ -732,12 +729,13 @@ function handleMessages(client) {
                 return;
             }
 
-            const roleArg = args[1];
-            const userArg = args[2];
+            // shift the arguments left since we removed "add"
+            const roleArg = args[0];
+            const userArg = args[1];
 
             if (!roleArg || !userArg) {
                 return message.reply(
-                    `Usage: ${prefix}role add <@role/roleID> <@user/userID/username>`
+                    `Usage: ${prefix}role <@role/roleID> <@user/userID/username>`
                 );
             }
 
@@ -792,7 +790,11 @@ function handleMessages(client) {
                     'Failed to update roles. Ensure my bot role is higher than the target role.'
                 );
             }
+
+            // Ensures execution stops here completely
+            return; 
         }
+
 
         // ----------------------------------------------------
         // MULTI-ROLE COMMAND
