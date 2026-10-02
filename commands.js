@@ -1118,6 +1118,8 @@ if (command === 'mrole') {
                 embeds: [resultEmbed]
             });
         }
+    });
+}
 
 
 module.exports = {
