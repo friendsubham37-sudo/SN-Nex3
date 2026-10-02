@@ -1069,8 +1069,15 @@ if (command === 'mrole') {
                 // BOTH LOOKUPS FAILED: LOG TARGET NAME PROPERLY
                 if (!member) {
                     const trackingLabel = squadUser.userId 
-                        ? `\`\${squadUser.username}\` (${squadUser.userId})`
-                        : `\`\${squadUser.username}\` *(No ID)*`;
+                // BOTH LOOKUPS FAILED: LOG TARGET NAME PROPERLY
+                if (!member) {
+                    const trackingLabel = squadUser.userId 
+                        ? `**${squadUser.username}** (${squadUser.userId})`
+                        : `**${squadUser.username}** *(No ID)*`;
+                    notInServer.push(trackingLabel);
+                    continue;
+                }
+
                     notInServer.push(trackingLabel);
                     continue;
                 }
